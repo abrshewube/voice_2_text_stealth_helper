@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Voice to Text Converter</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        .pulse {
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+        .fade-in {
+            animation: fadeIn 0.5s ease-in;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-blue-50 to-indigo-100 min-h-screen flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-xl overflow-hidden w-full max-w-md">
+        <!-- Header -->
+        <div class="bg-indigo-600 p-6 text-white">
+            <div class="flex items-center justify-between">
+                <h1 class="text-2xl font-bold flex items-center">
+                    <i class="fas fa-microphone mr-3"></i>
+                    Voice to Text
+                </h1>
+                <button id="copyBtn" class="bg-indigo-700 hover:bg-indigo-800 text-white p-2 rounded-full transition-all opacity-0 invisible">
+                    <i class="fas fa-copy"></i>
+                </button>
+            </div>
+            <p class="text-indigo-100 mt-2">Speak clearly and say "stop" when done</p>
+        </div>
+
+        <!-- Main Content -->
+        <div class="p-6">
+            <!-- Result Display -->
+            <div class="bg-gray-50 rounded-lg p-4 min-h-40 mb-6 border border-gray-200">
+                <p id="resultText" class="text-gray-700">Your transcription will appear here...</p>
+            </div>
+
+            <!-- Controls -->
+            <div class="flex flex-col items-center">
+                <button id="startBtn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-3 px-8 rounded-full flex items-center pulse">
+                    <i class="fas fa-microphone mr-2"></i>
+                    Start Recording
+                </button>
+                
+                <button id="stopBtn" class="mt-4 bg-red-500 hover:bg-red-600 text-white font-medium py-2 px-6 rounded-full flex items-center opacity-0 invisible transition-all">
+                    <i class="fas fa-stop mr-2"></i>
+                    Stop Recording
+                </button>
+                
+                <div id="status" class="mt-4 text-sm text-gray-500 flex items-center">
+                    <i class="fas fa-info-circle mr-2"></i>
+                    <span>Ready to start</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="bg-gray-50 p-4 text-center text-sm text-gray-500 border-t border-gray-200">
+            <p>Say "stop" or click the stop button to end recording</p>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const startBtn = document.getElementById('startBtn');
+            const stopBtn = document.getElementById('stopBtn');
+            const copyBtn = document.getElementById('copyBtn');
+            const resultText = document.getElementById('resultText');
+            const status = document.getElementById('status');
+            
+            let recognition;
+            let finalTranscript = '';
+            let isRecording = false;
+
+            // Check browser support
+            if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+                status.innerHTML = '<i class="fas fa-exclamation-triangle mr-2"></i> Speech recognition not supported in this browser';
+                startBtn.disabled = true;
+                startBtn.classList.remove('pulse');
+                startBtn.classList.add('bg-gray-400', 'cursor-not-allowed');
+                return;
+            }
+
+            // Initialize speech recognition
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            recognition = new SpeechRecognition();
+            recognition.continuous = true;
+            recognition.interimResults = true;
+            recognition.lang = 'en-US';
+
+            recognition.onstart = () => {
+                isRecording = true;
+                startBtn.classList.remove('pulse', 'bg-indigo-600');
+                startBtn.classList.add('bg-green-500');
+                startBtn.innerHTML = '<i class="fas fa-microphone mr-2"></i> Listening...';
+                
+                stopBtn.classList.remove('opacity-0', 'invisible');
+                stopBtn.classList.add('opacity-100', 'visible');
+                
+                status.innerHTML = '<i class="fas fa-circle text-green-500 mr-2 animate-pulse"></i> Listening... Speak now';
+                resultText.textContent = '';
+                finalTranscript = '';
+            };
+
+            recognition.onresult = (event) => {
+                let interimTranscript = '';
+                
+                for (let i = event.resultIndex; i < event.results.length; i++) {
+                    const transcript = event.results[i][0].transcript;
+                    
+                    if (event.results[i].isFinal) {
+                        finalTranscript += transcript;
+                        
+                        // Check for stop command
+                        if (transcript.toLowerCase().trim().includes('stop')) {
+                            stopRecording();
+                            return;
+                        }
+                    } else {
+                        interimTranscript += transcript;
+                    }
+                }
+                
+                // Display both final and interim results
+                resultText.innerHTML = finalTranscript + '<span class="text-gray-400">' + interimTranscript + '</span>';
+                
+                // Show copy button when there's text
+                if (finalTranscript.length > 0) {
+                    copyBtn.classList.remove('opacity-0', 'invisible');
+                    copyBtn.classList.add('opacity-100', 'visible', 'fade-in');
+                }
+            };
+
+            recognition.onerror = (event) => {
+                console.error('Speech recognition error', event.error);
+                status.innerHTML = '<i class="fas fa-exclamation-circle text-red-500 mr-2"></i> Error: ' + event.error;
+                resetUI();
+            };
+
+            recognition.onend = () => {
+                if (isRecording) {
+                    // If recording was stopped unexpectedly
+                    status.innerHTML = '<i class="fas fa-exclamation-circle text-yellow-500 mr-2"></i> Recording stopped';
+                }
+                resetUI();
+            };
+
+            // Button event listeners
+            startBtn.addEventListener('click', startRecording);
+            stopBtn.addEventListener('click', stopRecording);
+            copyBtn.addEventListener('click', copyText);
+
+            function startRecording() {
+                try {
+                    finalTranscript = '';
+                    resultText.textContent = '';
+                    recognition.start();
+                } catch (e) {
+                    console.error('Error starting recognition:', e);
+                    status.innerHTML = '<i class="fas fa-exclamation-circle text-red-500 mr-2"></i> Error starting microphone';
+                }
+            }
+
+            function stopRecording() {
+                isRecording = false;
+                recognition.stop();
+                
+                if (finalTranscript.length > 0) {
+                    status.innerHTML = '<i class="fas fa-check-circle text-green-500 mr-2"></i> Recording complete';
+                    resultText.textContent = finalTranscript;
+                } else {
+                    status.innerHTML = '<i class="fas fa-info-circle text-blue-500 mr-2"></i> No speech detected';
+                }
+            }
+
+            function copyText() {
+                navigator.clipboard.writeText(finalTranscript)
+                    .then(() => {
+                        const originalText = copyBtn.innerHTML;
+                        copyBtn.innerHTML = '<i class="fas fa-check mr-2"></i> Copied!';
+                        copyBtn.classList.add('bg-green-500');
+                        setTimeout(() => {
+                            copyBtn.innerHTML = originalText;
+                            copyBtn.classList.remove('bg-green-500');
+                        }, 2000);
+                    })
+                    .catch(err => {
+                        console.error('Failed to copy:', err);
+                        status.innerHTML = '<i class="fas fa-exclamation-circle text-red-500 mr-2"></i> Failed to copy text';
+                    });
+            }
+
+            function resetUI() {
+                startBtn.classList.remove('bg-green-500');
+                startBtn.classList.add('bg-indigo-600', 'pulse');
+                startBtn.innerHTML = '<i class="fas fa-microphone mr-2"></i> Start Recording';
+                
+                stopBtn.classList.add('opacity-0', 'invisible');
+                stopBtn.classList.remove('opacity-100', 'visible');
+                
+                isRecording = false;
+            }
+        });
+    </script>
+</body>
+</html>
